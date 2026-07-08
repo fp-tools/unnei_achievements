@@ -1,0 +1,100 @@
+name: Deploy dashboard / notify ChatWork
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read status.json
+        id: status
+        run: |
+          if [ ! -f status.json ]; then
+            echo "status=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          STATUS=$(node -pe "require('./status.json').status")
+          ATTEMPT=$(node -pe "require('./status.json').attempt")
+          DATE=$(node -pe "require('./status.json').date")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "attempt=$ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      # ---- 成功時: Firebase Hostingへデプロイ ----
+      - name: Setup Node
+        if: steps.status.outputs.status == 'success'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-tools
+        if: steps.status.outputs.status == 'success'
+        run: npm install -g firebase-tools
+
+      - name: Write service account key
+        if: steps.status.outputs.status == 'success'
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+
+      - name: Ensure web app exists & fetch SDK config
+        if: steps.status.outputs.status == 'success'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: |
+          PROJECT_ID=$(node -pe "require('/tmp/sa.json').project_id")
+          APP_ID=$(firebase apps:list WEB --project "$PROJECT_ID" --json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).result[0]?.appId || ''")
+          if [ -z "$APP_ID" ]; then
+            firebase apps:create WEB "unei-dashboard-web" --project "$PROJECT_ID"
+            APP_ID=$(firebase apps:list WEB --project "$PROJECT_ID" --json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).result[0].appId")
+          fi
+          firebase apps:sdkconfig WEB "$APP_ID" --project "$PROJECT_ID" --json \
+            | node -pe "'window.FIREBASE_CONFIG = ' + JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')).result.sdkConfig) + ';'" \
+            > public/firebase-config.js
+          echo "PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
+
+      - name: Deploy to Firebase Hosting
+        if: steps.status.outputs.status == 'success'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: firebase deploy --only hosting --project "$PROJECT_ID" --non-interactive
+
+      - name: Notify ChatWork (success)
+        if: steps.status.outputs.status == 'success'
+        env:
+          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+        run: |
+          ROOM_ID=136159534
+          MSG="[info][title]運営課売上ダッシュボード更新（${{ steps.status.outputs.date }}）[/title]本日分の集計が完了しました。最新版を添付します。\nhttps://$PROJECT_ID.web.app[/info]"
+          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+            -H "X-ChatWorkToken: $CW_TOKEN" \
+            --data-urlencode "body=$MSG"
+          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/files" \
+            -H "X-ChatWorkToken: $CW_TOKEN" \
+            -F "file=@public/index.html;type=text/html" \
+            -F "message=運営課売上ダッシュボード（${{ steps.status.outputs.date }}）"
+
+      # ---- 失敗時: ChatWork通知のみ ----
+      - name: Notify ChatWork (failed, attempt 2)
+        if: steps.status.outputs.status == 'failed' && steps.status.outputs.attempt == '2'
+        env:
+          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+        run: |
+          ROOM_ID=136159534
+          MSG=$'[To:1074386][FP]Soga_Naoyaさん \ncc[To:3721008][FP]Kaneko_Mikaさん\n本日の運営課売上データ集計に失敗しました。\n次回は10時にリトライします。'
+          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+            -H "X-ChatWorkToken: $CW_TOKEN" \
+            --data-urlencode "body=$MSG"
+
+      - name: Notify ChatWork (failed, attempt 3)
+        if: steps.status.outputs.status == 'failed' && steps.status.outputs.attempt == '3'
+        env:
+          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+        run: |
+          ROOM_ID=136159534
+          MSG=$'[To:1074386][FP]Soga_Naoyaさん \ncc[To:3721008][FP]Kaneko_Mikaさん\n本日の運営課売上データ集計に失敗しました。\n本日中の自動リトライは終了しました。お手数ですが手動でご確認をお願いします。'
+          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+            -H "X-ChatWorkToken: $CW_TOKEN" \
+            --data-urlencode "body=$MSG"

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>運営課 統合売上ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f9;color:#1f2933;font-family:"Segoe UI","Meiryo",sans-serif}
+.topbar{background:#1F4E78;color:#fff;padding:16px 24px}
+.topbar h1{font-size:19px;margin:0}
+.topbar .sub{font-size:11px;color:#c9dcef;margin-top:2px}
+.tabs{display:flex;gap:2px;background:#163a5c;padding:0 20px;overflow-x:auto}
+.tab{background:transparent;border:none;color:#c9dcef;padding:11px 18px;font-size:13px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab.active{color:#fff;border-bottom-color:#e8873a;font-weight:600}
+.tab:disabled{color:#5f7c98;cursor:not-allowed}
+.content{padding:20px;max-width:1100px;margin:0 auto}
+.panel{display:none}
+.panel.active{display:block}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px 14px}
+.toolbar label{font-size:12px;color:#67727e}
+.toolbar input[type=date]{border:1px solid #d5dce3;border-radius:6px;padding:5px 8px;font-size:13px}
+.toolbar .spacer{flex:1}
+.btn{background:#1F4E78;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer}
+.btn:hover{background:#173d61}
+.btn.secondary{background:#fff;color:#1F4E78;border:1px solid #1F4E78}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.card{background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card .l{font-size:12px;color:#67727e;margin-bottom:6px}
+.card .v{font-size:22px;font-weight:700}
+.card .u{font-size:12px;color:#8a95a1;margin-left:3px}
+.card.key{background:#eef5fc;border-color:#c9dcf0}
+.card.key .v{color:#1F4E78}
+.wrap{background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:16px;margin-bottom:20px}
+.wrap h3{font-size:13px;margin:0 0 12px;color:#67727e;font-weight:600}
+.chartbox{height:260px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid #eef1f5;text-align:right}
+th{background:#1F4E78;color:#fff;font-weight:600;position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:#f7fafd}
+tfoot td{font-weight:700;background:#eef5fc}
+.scroll{max-height:320px;overflow:auto;border:1px solid #eef1f5;border-radius:8px}
+.note{font-size:11px;color:#8a95a1;margin-top:8px}
+.empty{color:#8a95a1;font-size:13px;padding:30px;text-align:center}
+</style><style>
+#authOverlay{position:fixed;inset:0;background:#f4f6f9;z-index:9999;display:flex;
+  align-items:center;justify-content:center;font-family:"Segoe UI","Meiryo",sans-serif}
+#authBox{background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:32px 28px;
+  width:320px;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+#authBox h2{margin:0 0 4px;font-size:18px;color:#1F4E78}
+#authBox p{margin:0 0 18px;font-size:12px;color:#67727e}
+#authBox input{width:100%;box-sizing:border-box;padding:9px 10px;margin-bottom:10px;
+  border:1px solid #d5dce3;border-radius:6px;font-size:14px}
+#authBox button{width:100%;padding:10px;background:#1F4E78;color:#fff;border:none;
+  border-radius:6px;font-size:14px;cursor:pointer}
+#authBox button:hover{background:#173d61}
+#authErr{color:#c0392b;font-size:12px;min-height:16px;margin-bottom:6px}
+#logoutBar{position:fixed;top:8px;right:12px;z-index:9998;font-size:12px;color:#67727e}
+#logoutBar button{margin-left:8px;background:none;border:1px solid #d5dce3;border-radius:6px;
+  padding:4px 10px;cursor:pointer;font-size:12px;color:#1F4E78}
+</style></head>
+<body>
+<div id="authOverlay">
+  <div id="authBox">
+    <h2>運営課ダッシュボード</h2>
+    <p>社内メールアドレスでログインしてください</p>
+    <div id="authErr"></div>
+    <input id="authEmail" type="email" placeholder="メールアドレス" autocomplete="username">
+    <input id="authPass" type="password" placeholder="パスワード" autocomplete="current-password">
+    <button id="authBtn">ログイン</button>
+  </div>
+</div>
+<div id="logoutBar" style="display:none">
+  <span id="authUserLabel"></span>
+  <button id="logoutBtn">ログアウト</button>
+</div>
+<div id="appRoot" style="display:none">
+<div class="topbar">
+  <h1>運営課 統合売上ダッシュボード</h1>
+  <div class="sub">最終更新: <span id="updated"></span></div>
+</div>
+<div class="tabs" id="tabs"></div>
+<div class="content" id="content"></div>
+
+<script>
+const DATA = {"updated": "2026-07-08 20:29", "unei": {"daily": [{"date": "2026-07-01", "tier": 6718, "aki": 2846, "torihiki": 9630580, "tesuryo": 886559, "ken": 150}, {"date": "2026-07-02", "tier": 5862, "aki": 17275, "torihiki": 4936179, "tesuryo": 409977, "ken": 105}, {"date": "2026-07-03", "tier": 6240, "aki": 4551, "torihiki": 7162496, "tesuryo": 613843, "ken": 133}, {"date": "2026-07-04", "tier": 1713, "aki": 2, "torihiki": 2397498, "tesuryo": 257242, "ken": 53}, {"date": "2026-07-05", "tier": 3953, "aki": 19091, "torihiki": 1120478, "tesuryo": 126803, "ken": 58}, {"date": "2026-07-06", "tier": 4837, "aki": 6968, "torihiki": 11379194, "tesuryo": 989476, "ken": 164}, {"date": "2026-07-07", "tier": 3843, "aki": 1186, "torihiki": 6093640, "tesuryo": 563459, "ken": 110}, {"date": "2026-07-08", "tier": 3065, "aki": 4456, "torihiki": 21099295, "tesuryo": 1865767, "ken": 158}]}, "adsense": {"fetched_at": "2026-07-08 11:15", "period": "2026-07-01 〜 2026-07-07", "total": 6398, "english_for_japanese": 24, "today": 1160, "yesterday": 730, "mtd": 7558, "balance": 55611}, "kaijudo": {"daily": [{"date": "2026-07-07", "sales": 1200, "receive": 997, "orders": 3}]}, "rokt": {"daily": [{"date": "2026-07-01", "revenue": 1307}, {"date": "2026-07-02", "revenue": 1192}, {"date": "2026-07-03", "revenue": 3327}, {"date": "2026-07-04", "revenue": 734}, {"date": "2026-07-05", "revenue": 781}, {"date": "2026-07-06", "revenue": 837}, {"date": "2026-07-07", "revenue": 271}]}};
+const yen = n => "¥" + Math.round(n||0).toLocaleString("ja-JP");
+document.getElementById("updated").textContent = DATA.updated;
+
+const SOURCES = [
+  {key:"overview", label:"概要"},
+  {key:"unei", label:"インフォトップ"},
+  {key:"adsense", label:"AdSense"},
+  {key:"kaijudo", label:"海獣堂"},
+  {key:"rokt", label:"Rokt"},
+];
+
+function within(dateStr, from, to){
+  if(from && dateStr < from) return false;
+  if(to && dateStr > to) return false;
+  return true;
+}
+
+function toCSV(rows, headers){
+  const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines = [headers.map(esc).join(",")];
+  rows.forEach(r => lines.push(headers.map(h=>esc(r[h])).join(",")));
+  return lines.join("\r\n");
+}
+
+function downloadCSV(filename, rows, headers){
+  const bom = "﻿";
+  const blob = new Blob([bom + toCSV(rows, headers)], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------- tabs ----------
+const tabsEl = document.getElementById("tabs");
+const contentEl = document.getElementById("content");
+SOURCES.forEach(s => {
+  const has = s.key === "overview" || !!DATA[s.key];
+  const btn = document.createElement("button");
+  btn.className = "tab" + (s.key==="overview" ? " active" : "");
+  btn.textContent = s.label;
+  btn.disabled = !has;
+  btn.onclick = () => selectTab(s.key);
+  btn.dataset.key = s.key;
+  tabsEl.appendChild(btn);
+});
+
+function selectTab(key){
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.key === key));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + key));
+}
+
+// ---------- overview panel ----------
+function buildOverview(){
+  const el = document.createElement("div");
+  el.id = "panel-overview"; el.className = "panel active";
+  const cards = [];
+  if (DATA.unei) {
+    const t = DATA.unei.daily.reduce((a,d)=>({tier:a.tier+d.tier, aki:a.aki+d.aki}), {tier:0,aki:0});
+    cards.push(["2ティア+空き枠 合計（税抜・累計）", t.tier + t.aki, true]);
+  }
+  if (DATA.adsense) cards.push(["AdSense 前日分合計", DATA.adsense.total, true]);
+  if (DATA.kaijudo) {
+    const t = DATA.kaijudo.daily.reduce((a,d)=>a+d.sales, 0);
+    cards.push(["海獣堂 売上合計（累計）", t, true]);
+  }
+  if (DATA.rokt) {
+    const t = DATA.rokt.daily.reduce((a,d)=>a+d.revenue, 0);
+    cards.push(["Rokt 収益合計（累計）", t, true]);
+  }
+  el.innerHTML = `<div class="cards">${cards.map(([l,v,key])=>
+    `<div class="card ${key?'key':''}"><div class="l">${l}</div><div class="v">${yen(v)}</div></div>`).join("")}</div>
+    <div class="note">各タブで期間を絞り込んだ詳細・CSVダウンロードができます。</div>`;
+  contentEl.appendChild(el);
+}
+
+// ---------- unei panel ----------
+function buildUnei(){
+  if (!DATA.unei) return;
+  const daily = DATA.unei.daily;
+  const el = document.createElement("div");
+  el.id = "panel-unei"; el.className = "panel";
+  const minD = daily[0]?.date, maxD = daily[daily.length-1]?.date;
+  el.innerHTML = `
+    <div class="toolbar">
+      <label>期間 <input type="date" id="unei-from" value="${minD||''}"></label> 〜
+      <input type="date" id="unei-to" value="${maxD||''}">
+      <button class="btn secondary" id="unei-reset">全期間</button>
+      <div class="spacer"></div>
+      <button class="btn" id="unei-csv">CSVダウンロード</button>
+    </div>
+    <div class="cards" id="unei-cards"></div>
+    <div class="wrap"><h3>日次推移</h3><div class="chartbox"><canvas id="unei-chart"></canvas></div></div>
+    <div class="wrap"><h3>日別明細</h3><div class="scroll"><table id="unei-tbl">
+    <thead><tr><th>入金日</th><th>2ティア(税抜)</th><th>空き枠(税抜)</th><th>合計(税抜)</th><th>取扱高</th><th>注文件数</th></tr></thead>
+    <tbody></tbody><tfoot></tfoot></table></div>
+    <div class="note">計上式: 該当ID群の (2ティア報酬／アフィリ報酬) ÷110%。対象IDは 運営課ID定義.csv で管理。</div></div>`;
+  contentEl.appendChild(el);
+
+  let chart;
+  function render(){
+    const from = document.getElementById("unei-from").value;
+    const to = document.getElementById("unei-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    let st=0, sa=0, sto=0, sk=0;
+    document.querySelector("#unei-tbl tbody").innerHTML = rows.map(d=>{
+      st+=d.tier; sa+=d.aki; sto+=d.torihiki; sk+=d.ken;
+      return `<tr><td>${d.date}</td><td>${yen(d.tier)}</td><td>${yen(d.aki)}</td><td>${yen(d.tier+d.aki)}</td><td>${yen(d.torihiki)}</td><td>${d.ken.toLocaleString()}</td></tr>`;
+    }).join("") || `<tr><td colspan="6" class="empty">データがありません</td></tr>`;
+    document.querySelector("#unei-tbl tfoot").innerHTML = rows.length ? `<tr><td>合計</td><td>${yen(st)}</td><td>${yen(sa)}</td><td>${yen(st+sa)}</td><td>${yen(sto)}</td><td>${sk.toLocaleString()}</td></tr>` : "";
+    document.getElementById("unei-cards").innerHTML = [
+      ["2ティア 計上額（税抜）", st, true], ["空き枠 計上額（税抜）", sa, true], ["合計（税抜）", st+sa, true], ["取扱高（参考）", sto, false],
+    ].map(([l,v,key])=>`<div class="card ${key?'key':''}"><div class="l">${l}</div><div class="v">${yen(v)}</div></div>`).join("");
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("unei-chart"), {type:"line", data:{labels:rows.map(d=>d.date.slice(5)), datasets:[
+      {label:"2ティア(税抜)", data:rows.map(d=>d.tier), borderColor:"#1F4E78", backgroundColor:"rgba(31,78,120,.08)", tension:.3, fill:true},
+      {label:"空き枠(税抜)", data:rows.map(d=>d.aki), borderColor:"#e8873a", backgroundColor:"rgba(232,135,58,.08)", tension:.3, fill:true},
+    ]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}}, scales:{y:{ticks:{callback:v=>"¥"+v.toLocaleString()}}}}});
+  }
+  document.getElementById("unei-from").onchange = render;
+  document.getElementById("unei-to").onchange = render;
+  document.getElementById("unei-reset").onclick = () => { document.getElementById("unei-from").value = minD||''; document.getElementById("unei-to").value = maxD||''; render(); };
+  document.getElementById("unei-csv").onclick = () => {
+    const from = document.getElementById("unei-from").value, to = document.getElementById("unei-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    downloadCSV(`infotop_${from}_${to}.csv`, rows, ["date","tier","aki","torihiki","tesuryo","ken"]);
+  };
+  render();
+}
+
+// ---------- adsense panel ----------
+function buildAdsense(){
+  if (!DATA.adsense) return;
+  const a = DATA.adsense;
+  const el = document.createElement("div");
+  el.id = "panel-adsense"; el.className = "panel";
+  const cards = [
+    ["全サイト合計推定収益額", a.total, true],
+    ["うち english-for-japanese.net", a.english_for_japanese, false],
+    ["本日（現時点まで）", a.today, false],
+    ["昨日", a.yesterday, false],
+    ["今月累計", a.mtd, false],
+    ["残高", a.balance, false],
+  ].filter(([l,v])=>v!==null && v!==undefined);
+  el.innerHTML = `
+    <div class="toolbar"><label>対象期間: ${a.period||'-'} ／ 取得: ${a.fetched_at||'-'}</label>
+      <div class="spacer"></div>
+      <button class="btn" id="adsense-csv">CSVダウンロード</button>
+    </div>
+    <div class="cards">${cards.map(([l,v,key])=>`<div class="card ${key?'key':''}"><div class="l">${l}</div><div class="v">${yen(v)}</div></div>`).join("")}</div>
+    <div class="note">AdSenseはメールで届く前日分レポートのため、日次テーブル・グラフは対応していません。</div>`;
+  contentEl.appendChild(el);
+  document.getElementById("adsense-csv").onclick = () => downloadCSV("adsense.csv", [a], Object.keys(a));
+}
+
+// ---------- kaijudo panel ----------
+function buildKaijudo(){
+  if (!DATA.kaijudo) return;
+  const daily = DATA.kaijudo.daily;
+  const el = document.createElement("div");
+  el.id = "panel-kaijudo"; el.className = "panel";
+  const minD = daily[0]?.date, maxD = daily[daily.length-1]?.date;
+  el.innerHTML = `
+    <div class="toolbar">
+      <label>期間 <input type="date" id="kj-from" value="${minD||''}"></label> 〜
+      <input type="date" id="kj-to" value="${maxD||''}">
+      <button class="btn secondary" id="kj-reset">全期間</button>
+      <div class="spacer"></div>
+      <button class="btn" id="kj-csv">CSVダウンロード</button>
+    </div>
+    <div class="cards" id="kj-cards"></div>
+    <div class="wrap"><h3>日次推移</h3><div class="chartbox"><canvas id="kj-chart"></canvas></div></div>
+    <div class="wrap"><h3>日別明細</h3><div class="scroll"><table id="kj-tbl">
+    <thead><tr><th>支払い日</th><th>売上(小計)</th><th>受取金額</th><th>注文件数</th></tr></thead>
+    <tbody></tbody><tfoot></tfoot></table></div></div>`;
+  contentEl.appendChild(el);
+
+  let chart;
+  function render(){
+    const from = document.getElementById("kj-from").value;
+    const to = document.getElementById("kj-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    let ss=0, sr=0, so=0;
+    document.querySelector("#kj-tbl tbody").innerHTML = rows.map(d=>{
+      ss+=d.sales; sr+=d.receive; so+=d.orders;
+      return `<tr><td>${d.date}</td><td>${yen(d.sales)}</td><td>${yen(d.receive)}</td><td>${d.orders.toLocaleString()}</td></tr>`;
+    }).join("") || `<tr><td colspan="4" class="empty">データがありません</td></tr>`;
+    document.querySelector("#kj-tbl tfoot").innerHTML = rows.length ? `<tr><td>合計</td><td>${yen(ss)}</td><td>${yen(sr)}</td><td>${so.toLocaleString()}</td></tr>` : "";
+    document.getElementById("kj-cards").innerHTML = [
+      ["売上合計（小計）", ss, true], ["受取金額合計", sr, true], ["注文件数", so, false],
+    ].map(([l,v,key])=>`<div class="card ${key?'key':''}"><div class="l">${l}</div><div class="v">${key||l.includes('件')?'':''}${l.includes('件数')?v.toLocaleString():yen(v)}</div></div>`).join("");
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("kj-chart"), {type:"line", data:{labels:rows.map(d=>d.date.slice(5)), datasets:[
+      {label:"売上(小計)", data:rows.map(d=>d.sales), borderColor:"#8a3b1f", backgroundColor:"rgba(138,59,31,.08)", tension:.3, fill:true},
+      {label:"受取金額", data:rows.map(d=>d.receive), borderColor:"#3a8a6b", backgroundColor:"rgba(58,138,107,.08)", tension:.3, fill:true},
+    ]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}}, scales:{y:{ticks:{callback:v=>"¥"+v.toLocaleString()}}}}});
+  }
+  document.getElementById("kj-from").onchange = render;
+  document.getElementById("kj-to").onchange = render;
+  document.getElementById("kj-reset").onclick = () => { document.getElementById("kj-from").value = minD||''; document.getElementById("kj-to").value = maxD||''; render(); };
+  document.getElementById("kj-csv").onclick = () => {
+    const from = document.getElementById("kj-from").value, to = document.getElementById("kj-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    downloadCSV(`kaijudo_${from}_${to}.csv`, rows, ["date","sales","receive","orders"]);
+  };
+  render();
+}
+
+// ---------- rokt panel ----------
+function buildRokt(){
+  if (!DATA.rokt) return;
+  const daily = DATA.rokt.daily;
+  const el = document.createElement("div");
+  el.id = "panel-rokt"; el.className = "panel";
+  const minD = daily[0]?.date, maxD = daily[daily.length-1]?.date;
+  el.innerHTML = `
+    <div class="toolbar">
+      <label>期間 <input type="date" id="rk-from" value="${minD||''}"></label> 〜
+      <input type="date" id="rk-to" value="${maxD||''}">
+      <button class="btn secondary" id="rk-reset">全期間</button>
+      <div class="spacer"></div>
+      <button class="btn" id="rk-csv">CSVダウンロード</button>
+    </div>
+    <div class="cards" id="rk-cards"></div>
+    <div class="wrap"><h3>日次推移</h3><div class="chartbox"><canvas id="rk-chart"></canvas></div></div>`;
+  contentEl.appendChild(el);
+  let chart;
+  function render(){
+    const from = document.getElementById("rk-from").value;
+    const to = document.getElementById("rk-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    const total = rows.reduce((a,d)=>a+d.revenue,0);
+    document.getElementById("rk-cards").innerHTML = `<div class="card key"><div class="l">Rokt 収益合計</div><div class="v">${yen(total)}</div></div>`;
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("rk-chart"), {type:"line", data:{labels:rows.map(d=>d.date.slice(5)), datasets:[
+      {label:"収益", data:rows.map(d=>d.revenue), borderColor:"#7a3ba0", backgroundColor:"rgba(122,59,160,.08)", tension:.3, fill:true},
+    ]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}}, scales:{y:{ticks:{callback:v=>"¥"+v.toLocaleString()}}}}});
+  }
+  document.getElementById("rk-from").onchange = render;
+  document.getElementById("rk-to").onchange = render;
+  document.getElementById("rk-reset").onclick = () => { document.getElementById("rk-from").value = minD||''; document.getElementById("rk-to").value = maxD||''; render(); };
+  document.getElementById("rk-csv").onclick = () => {
+    const from = document.getElementById("rk-from").value, to = document.getElementById("rk-to").value;
+    const rows = daily.filter(d => within(d.date, from, to));
+    downloadCSV(`rokt_${from}_${to}.csv`, rows, ["date","revenue"]);
+  };
+  render();
+}
+
+buildOverview();
+buildUnei();
+buildAdsense();
+buildKaijudo();
+buildRokt();
+</script></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+(function(){
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  var overlay = document.getElementById("authOverlay");
+  var appRoot = document.getElementById("appRoot");
+  var logoutBar = document.getElementById("logoutBar");
+  var errBox = document.getElementById("authErr");
+
+  firebase.auth().onAuthStateChanged(function(user){
+    if(user){
+      overlay.style.display = "none";
+      appRoot.style.display = "block";
+      logoutBar.style.display = "block";
+      document.getElementById("authUserLabel").textContent = user.email;
+    } else {
+      overlay.style.display = "flex";
+      appRoot.style.display = "none";
+      logoutBar.style.display = "none";
+    }
+  });
+
+  document.getElementById("authBtn").addEventListener("click", function(){
+    errBox.textContent = "";
+    var email = document.getElementById("authEmail").value.trim();
+    var pass = document.getElementById("authPass").value;
+    firebase.auth().signInWithEmailAndPassword(email, pass)
+      .catch(function(err){ errBox.textContent = "ログインに失敗しました（" + err.code + "）"; });
+  });
+  document.getElementById("authPass").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ document.getElementById("authBtn").click(); }
+  });
+  document.getElementById("logoutBtn").addEventListener("click", function(){
+    firebase.auth().signOut();
+  });
+})();
+</script>
+</body></html>
