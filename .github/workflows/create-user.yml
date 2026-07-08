@@ -1,0 +1,51 @@
+name: Create Firebase Auth user
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'ログインアカウントを作成するメールアドレス'
+        required: true
+        type: string
+
+jobs:
+  create-user:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write service account key
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-admin
+        run: npm install firebase-admin
+
+      - name: Create user and generate password-set link
+        run: |
+          node -e "
+          const admin = require('firebase-admin');
+          const sa = require('/tmp/sa.json');
+          admin.initializeApp({ credential: admin.credential.cert(sa) });
+          const email = process.env.TARGET_EMAIL;
+          (async () => {
+            try {
+              const existing = await admin.auth().getUserByEmail(email).catch(() => null);
+              if (!existing) {
+                await admin.auth().createUser({ email, emailVerified: false });
+                console.log('User created: ' + email);
+              } else {
+                console.log('User already exists: ' + email);
+              }
+              const link = await admin.auth().generatePasswordResetLink(email);
+              console.log('PASSWORD_SET_LINK: ' + link);
+            } catch (e) {
+              console.error('ERROR: ' + e.message);
+              process.exit(1);
+            }
+          })();
+          "
+        env:
+          TARGET_EMAIL: ${{ inputs.email }}
