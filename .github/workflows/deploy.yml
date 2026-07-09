@@ -64,37 +64,47 @@ jobs:
       - name: Notify ChatWork (success)
         if: steps.status.outputs.status == 'success'
         env:
-          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CW_TOKEN_RAW: ${{ secrets.CHATWORK_API_TOKEN }}
         run: |
+          # secretsに末尾改行等が混入している場合の対策として必ずtrimする
+          CW_TOKEN=$(printf '%s' "$CW_TOKEN_RAW" | tr -d '\r\n' | xargs)
           ROOM_ID=136159534
-          MSG="[info][title]運営課売上ダッシュボード更新（${{ steps.status.outputs.date }}）[/title]本日分の集計が完了しました。最新版を添付します。\nhttps://$PROJECT_ID.web.app[/info]"
-          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+          MSG=$'[info][title]運営課売上ダッシュボード更新（'"${{ steps.status.outputs.date }}"$'）[/title]本日分の集計が完了しました。最新版を添付します。\nhttps://'"$PROJECT_ID"$'.web.app[/info]'
+          echo "MSG length: ${#MSG}"
+          RESP1=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
             -H "X-ChatWorkToken: $CW_TOKEN" \
-            --data-urlencode "body=$MSG"
-          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/files" \
+            --data-urlencode "body=$MSG")
+          echo "Message response: $RESP1"
+          ls -la public/index.html
+          RESP2=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/files" \
             -H "X-ChatWorkToken: $CW_TOKEN" \
             -F "file=@public/index.html;type=text/html" \
-            -F "message=運営課売上ダッシュボード（${{ steps.status.outputs.date }}）"
+            -F "message=運営課売上ダッシュボード（${{ steps.status.outputs.date }}）")
+          echo "File response: $RESP2"
 
       # ---- 失敗時: ChatWork通知のみ ----
       - name: Notify ChatWork (failed, attempt 2)
         if: steps.status.outputs.status == 'failed' && steps.status.outputs.attempt == '2'
         env:
-          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CW_TOKEN_RAW: ${{ secrets.CHATWORK_API_TOKEN }}
         run: |
+          CW_TOKEN=$(printf '%s' "$CW_TOKEN_RAW" | tr -d '\r\n' | xargs)
           ROOM_ID=136159534
           MSG=$'[To:1074386][FP]Soga_Naoyaさん \ncc[To:3721008][FP]Kaneko_Mikaさん\n本日の運営課売上データ集計に失敗しました。\n次回は10時にリトライします。'
-          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+          RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
             -H "X-ChatWorkToken: $CW_TOKEN" \
-            --data-urlencode "body=$MSG"
+            --data-urlencode "body=$MSG")
+          echo "Message response: $RESP"
 
       - name: Notify ChatWork (failed, attempt 3)
         if: steps.status.outputs.status == 'failed' && steps.status.outputs.attempt == '3'
         env:
-          CW_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          CW_TOKEN_RAW: ${{ secrets.CHATWORK_API_TOKEN }}
         run: |
+          CW_TOKEN=$(printf '%s' "$CW_TOKEN_RAW" | tr -d '\r\n' | xargs)
           ROOM_ID=136159534
           MSG=$'[To:1074386][FP]Soga_Naoyaさん \ncc[To:3721008][FP]Kaneko_Mikaさん\n本日の運営課売上データ集計に失敗しました。\n本日中の自動リトライは終了しました。お手数ですが手動でご確認をお願いします。'
-          curl -s -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
+          RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "https://api.chatwork.com/v2/rooms/$ROOM_ID/messages" \
             -H "X-ChatWorkToken: $CW_TOKEN" \
-            --data-urlencode "body=$MSG"
+            --data-urlencode "body=$MSG")
+          echo "Message response: $RESP"
